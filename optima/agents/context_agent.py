@@ -43,4 +43,7 @@ async def gather(
         terminal_tool="submit_evidence",
         cached_suffix=store.compact_index(),
     )
-    return parse_evidence(result.terminal_input), result
+    evidence, dropped = parse_evidence(result.terminal_input)
+    if dropped:
+        result.notes.append(f"context agent dropped {dropped} malformed evidence item(s)")
+    return evidence, result

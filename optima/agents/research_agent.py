@@ -34,4 +34,7 @@ async def gather(
         registry=registry,
         terminal_tool="submit_evidence",
     )
-    return parse_evidence(result.terminal_input), result
+    evidence, dropped = parse_evidence(result.terminal_input)
+    if dropped:
+        result.notes.append(f"research agent dropped {dropped} malformed evidence item(s)")
+    return evidence, result

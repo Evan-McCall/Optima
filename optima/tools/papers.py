@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from pathlib import Path
 
 import httpx
@@ -29,6 +30,7 @@ class PaperSearch:
         self.store_dir = Path(store_dir)
         self.allow_live = allow_live
         self._cache: list[Paper] | None = None
+        self._cache_lock = threading.Lock()  # runner runs tool calls via to_thread
 
     def search(self, query: str, max_results: int = 8) -> list[Paper]:
         if self.allow_live:
@@ -49,9 +51,11 @@ class PaperSearch:
     # -- cache ---------------------------------------------------------------
     def _load_cache(self) -> list[Paper]:
         if self._cache is None:
-            path = self.store_dir / "papers_cache.json"
-            raw = json.loads(path.read_text()) if path.exists() else []
-            self._cache = [Paper(**p) for p in raw]
+            with self._cache_lock:  # double-checked: only one thread loads the file
+                if self._cache is None:
+                    path = self.store_dir / "papers_cache.json"
+                    raw = json.loads(path.read_text()) if path.exists() else []
+                    self._cache = [Paper(**p) for p in raw]
         return self._cache
 
     def _cache_search(self, query: str, max_results: int) -> list[Paper]:

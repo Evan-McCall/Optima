@@ -59,5 +59,30 @@ async def test_ingest_handles_unparseable_row(tmp_path, monkeypatch):
     result = await csv_loader.ingest_csv(csv_path, store_dir=tmp_path)
     assert result.rows == 1
     assert result.parsed == 0
-    assert result.failures == ["row 1"]
+    assert result.failures == ["row 1: model did not emit record_experiment"]
     assert (result.added, result.updated) == (0, 0)
+
+
+def _handler_bad_schema(kwargs):
+    # Valid tool call, but a field violates the schema (bad status enum).
+    return response([tool_use("record_experiment", {
+        "experiment_id": "exp_bad",
+        "hypothesis": "h",
+        "task": "t",
+        "status": "definitely-not-valid",
+    })])
+
+
+async def test_ingest_surfaces_schema_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(csv_loader, "AsyncAnthropic", factory(_handler_bad_schema))
+
+    csv_path = tmp_path / "in.csv"
+    csv_path.write_text(_MESSY_CSV)
+
+    result = await csv_loader.ingest_csv(csv_path, store_dir=tmp_path)
+    assert result.parsed == 0
+    assert len(result.failures) == 1
+    # the reason names the exception class, not a silent drop
+    assert "row 1:" in result.failures[0]
+    assert "ValidationError" in result.failures[0]

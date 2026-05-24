@@ -24,6 +24,7 @@ class AgentResult:
     text: str                    # any final assistant text (usually empty for tool-forced agents)
     usage: dict = field(default_factory=lambda: {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0})
     iterations: int = 0
+    notes: list[str] = field(default_factory=list)  # diagnostics surfaced to the run
 
 
 async def run_agent(
@@ -64,7 +65,10 @@ async def run_agent(
 
         tool_uses = [b for b in resp.content if b.type == "tool_use"]
 
-        # Terminal tool called -> done.
+        # Terminal tool called -> done. The terminal tool ends the turn; any sibling
+        # non-terminal tool calls in the same response are intentionally discarded.
+        # (Safe today: forced-terminal agents have no other tools, and evidence agents
+        # that do are never force_terminal, so they don't mix the two in one turn.)
         for b in tool_uses:
             if terminal_tool and b.name == terminal_tool:
                 result.terminal_input = dict(b.input)

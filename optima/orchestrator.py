@@ -41,10 +41,14 @@ async def run(query: str, *, allow_live: bool = True, store_dir: Path | None = N
         # 1. Cheap intent pass (Haiku).
         intent, intent_res = await _intent(client, query)
         _merge(usage, intent_res.usage)
+        notes.extend(intent_res.notes)
         if intent is None:
+            said = intent_res.text.strip()
+            if said and len(said) > 200:
+                said = said[:200].rstrip() + "…"
             notes.append(
                 "Intent pass returned no usable plan; defaulted to research + context."
-                + (f' Model said: "{intent_res.text[:200]}"' if intent_res.text else "")
+                + (f' Model said: "{said}"' if said else "")
             )
         needs_research = intent.needs_research if intent else True
         needs_context = intent.needs_context if intent else True
@@ -66,8 +70,10 @@ async def run(query: str, *, allow_live: bool = True, store_dir: Path | None = N
         )
         if research_res:
             _merge(usage, research_res.usage)
+            notes.extend(research_res.notes)
         if context_res:
             _merge(usage, context_res.usage)
+            notes.extend(context_res.notes)
 
         if not research_ev and not context_ev:
             notes.append("No evidence gathered; recommendation may be weak.")
@@ -75,6 +81,7 @@ async def run(query: str, *, allow_live: bool = True, store_dir: Path | None = N
         # 3. Synthesis (forced submit_recommendation + citation firewall).
         rec, synth_res = await synthesis_agent.synthesize(client, query, research_ev, context_ev)
         _merge(usage, synth_res.usage)
+        notes.extend(synth_res.notes)
         if rec is None:
             notes.append("Synthesis did not return a recommendation.")
 

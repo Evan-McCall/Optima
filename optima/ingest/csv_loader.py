@@ -83,9 +83,9 @@ async def ingest_csv(path: str | Path, *, store_dir: Path | None = None) -> Inge
     out = IngestResult(rows=len(rows))
     async with AsyncAnthropic(api_key=config.require_api_key()) as client:
         for idx, row in enumerate(rows):
-            exp = await _row_to_experiment(client, row)
+            exp, err = await _row_to_experiment(client, row)
             if exp is None:
-                out.failures.append(f"row {idx + 1}")
+                out.failures.append(f"row {idx + 1}: {err}")
             else:
                 out.experiments.append(exp)
     out.parsed = len(out.experiments)
@@ -93,7 +93,9 @@ async def ingest_csv(path: str | Path, *, store_dir: Path | None = None) -> Inge
     return out
 
 
-async def _row_to_experiment(client: AsyncAnthropic, row: dict) -> Experiment | None:
+async def _row_to_experiment(client: AsyncAnthropic, row: dict) -> tuple[Experiment | None, str | None]:
+    """Return (experiment, None) on success, or (None, reason) so the caller can
+    record *why* a row failed instead of dropping it silently."""
     body = "\n".join(f"{k}: {v}" for k, v in row.items() if v not in (None, ""))
     result = await run_agent(
         client,
@@ -105,8 +107,8 @@ async def _row_to_experiment(client: AsyncAnthropic, row: dict) -> Experiment | 
         force_terminal=True,
     )
     if not result.terminal_input:
-        return None
+        return None, "model did not emit record_experiment"
     try:
-        return Experiment(**result.terminal_input)
-    except Exception:
-        return None
+        return Experiment(**result.terminal_input), None
+    except Exception as exc:
+        return None, exc.__class__.__name__
