@@ -16,7 +16,11 @@ from ..schema import Evidence, Recommendation
 from ..tools.registry import ToolRegistry
 from .runner import AgentResult, run_agent
 
-_ARXIV_RE = re.compile(r"^\d{4}\.\d{4,5}$")
+# Matches both modern arXiv IDs ("2407.10793") and the pre-2007 archive form
+# ("cs/0509001", "cs.AI/0512001"). Tolerates a trailing version ("v3").
+# Note: _norm() lowercases before this matches, which is fine — arxiv.org
+# accepts the lowercased subject form and resolves to the canonical page.
+_ARXIV_RE = re.compile(r"^(?:[a-z\-]+(?:\.[a-z]{2})?/\d{7}|\d{4}\.\d{4,5})(?:v\d+)?$")
 
 
 async def synthesize(
@@ -88,7 +92,18 @@ def _apply_firewall(rec: Recommendation, evidence: list[Evidence]) -> None:
 
 
 def _resolve_links(rec: Recommendation) -> None:
+    """Populate ``Evidence.link`` for every external paper we can identify.
+
+    Modern + old-style arXiv IDs map to arxiv.org/abs/<id>. Refs prefixed
+    ``s2:`` (Semantic Scholar paperIds) map to the S2 abstract page so a paper
+    with no arXiv mirror still gets a clickable destination.
+    """
     for e in rec.ranked_evidence:
-        rid = _norm(e.ref_id)
-        if e.kind == "external_paper" and _ARXIV_RE.match(rid):
+        if e.kind != "external_paper":
+            continue
+        raw = (e.ref_id or "").strip()
+        rid = _norm(raw)
+        if _ARXIV_RE.match(rid):
             e.link = f"https://arxiv.org/abs/{rid}"
+        elif raw.lower().startswith("s2:"):
+            e.link = f"https://www.semanticscholar.org/paper/{raw[3:]}"

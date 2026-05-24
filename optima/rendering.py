@@ -75,7 +75,11 @@ def _evidence_line(e: Evidence) -> str:
     label = _KIND_LABEL.get(e.kind, e.kind)
     head = f"**[{label}] {e.title}** · `{e.ref_id}`"
     if e.link:
-        head += f" — [link]({e.link})"
+        # Display the URL itself as the link text so it's visible (and copyable
+        # even in terminals without OSC-8 click support). The scheme is stripped
+        # for compactness — the markdown link still points at the full URL.
+        display = e.link.replace("https://", "").replace("http://", "")
+        head += f" — [{display}]({e.link})"
     return head
 
 

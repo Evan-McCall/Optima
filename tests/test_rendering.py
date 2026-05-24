@@ -25,7 +25,10 @@ def test_to_markdown_has_all_sections():
                     "Ranked Evidence", "Claims & Confidence"):
         assert section in md
     assert "exp_004" in md
-    assert "https://arxiv.org/abs/2309.15217" in md
+    # Link text is the URL itself (sans scheme) so it's visible AND clickable —
+    # not the bare word "link" which carries no information.
+    assert "[arxiv.org/abs/2309.15217](https://arxiv.org/abs/2309.15217)" in md
+    assert " — [link](" not in md  # explicit guard against the old format
     assert "🟢 High" in md
     assert "heuristic estimates" in md
 
