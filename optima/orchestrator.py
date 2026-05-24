@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from anthropic import AsyncAnthropic
 
@@ -27,18 +28,26 @@ class RunResult:
     notes: list[str] = field(default_factory=list)
 
 
-async def run(query: str, *, allow_live: bool = True, store_dir: Path | None = None) -> RunResult:
+async def run(
+    query: str,
+    *,
+    allow_live: bool = True,
+    store_dir: Path | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> RunResult:
     config.require_api_key()
     store_dir = store_dir or config.STORE_DIR
     store = InternalStore(store_dir)
-    papers = PaperSearch(store_dir, allow_live=allow_live)
+    papers = PaperSearch(store_dir, allow_live=allow_live, industry=config.INDUSTRY)
     registry = ToolRegistry(store, papers)
 
     usage: dict = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
     notes: list[str] = []
+    notify = progress or (lambda _phase: None)
 
     async with AsyncAnthropic(api_key=config.require_api_key()) as client:
         # 1. Cheap intent pass (Haiku).
+        notify("Reading intent…")
         intent, intent_res = await _intent(client, query)
         _merge(usage, intent_res.usage)
         notes.extend(intent_res.notes)
@@ -65,6 +74,7 @@ async def run(query: str, *, allow_live: bool = True, store_dir: Path | None = N
                 return [], None
             return await context_agent.gather(client, registry, store, query, terms)
 
+        notify("Gathering evidence (research + context)…")
         (research_ev, research_res), (context_ev, context_res) = await asyncio.gather(
             _research(), _context()
         )
@@ -79,6 +89,7 @@ async def run(query: str, *, allow_live: bool = True, store_dir: Path | None = N
             notes.append("No evidence gathered; recommendation may be weak.")
 
         # 3. Synthesis (forced submit_recommendation + citation firewall).
+        notify("Synthesizing recommendation…")
         rec, synth_res = await synthesis_agent.synthesize(client, query, research_ev, context_ev)
         _merge(usage, synth_res.usage)
         notes.extend(synth_res.notes)
@@ -88,8 +99,16 @@ async def run(query: str, *, allow_live: bool = True, store_dir: Path | None = N
     return RunResult(rec, intent, research_ev, context_ev, usage, notes)
 
 
-def run_sync(query: str, *, allow_live: bool = True, store_dir: Path | None = None) -> RunResult:
-    return asyncio.run(run(query, allow_live=allow_live, store_dir=store_dir))
+def run_sync(
+    query: str,
+    *,
+    allow_live: bool = True,
+    store_dir: Path | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> RunResult:
+    return asyncio.run(
+        run(query, allow_live=allow_live, store_dir=store_dir, progress=progress)
+    )
 
 
 async def _intent(client: AsyncAnthropic, query: str) -> tuple[IntentPlan | None, AgentResult]:

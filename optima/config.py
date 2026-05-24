@@ -52,6 +52,11 @@ def max_tokens_for(key: str) -> int:
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 SEMANTIC_SCHOLAR_API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 
+# --- Team focus -------------------------------------------------------------
+# The team's industry/domain (set by `optima init`). Appended to every paper
+# search so arXiv / Semantic Scholar / cache results stay on-domain.
+INDUSTRY = os.getenv("OPTIMA_INDUSTRY")
+
 # --- Store location ---------------------------------------------------------
 # Default = the committed synthetic dataset (demo_data/) so a fresh clone runs
 # immediately. Point at your real, private workspace with OPTIMA_STORE_DIR or
