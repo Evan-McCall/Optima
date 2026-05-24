@@ -26,13 +26,21 @@ _TIMEOUT = 8.0
 
 
 class PaperSearch:
-    def __init__(self, store_dir: Path, allow_live: bool = True):
+    def __init__(self, store_dir: Path, allow_live: bool = True, industry: str | None = None):
         self.store_dir = Path(store_dir)
         self.allow_live = allow_live
+        # Team's domain (from `optima init`); folded into every search query so
+        # results stay on-domain regardless of the terms the agent picks.
+        self.industry = (industry or "").strip() or None
         self._cache: list[Paper] | None = None
         self._cache_lock = threading.Lock()  # runner runs tool calls via to_thread
 
+    def _augment(self, query: str) -> str:
+        """Append the team's industry to the query as an always-on keyword."""
+        return f"{query} {self.industry}".strip() if self.industry else query
+
     def search(self, query: str, max_results: int = 8) -> list[Paper]:
+        query = self._augment(query)
         if self.allow_live:
             live: list[Paper] = []
             try:
