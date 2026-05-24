@@ -89,11 +89,11 @@ SUBMIT_RECOMMENDATION = {
         "properties": {
             "decision_summary": {
                 "type": "string",
-                "description": "A 3-6 sentence summary of exactly what to try next, why it is promising based on the gathered evidence, and what pitfalls to avoid.",
+                "description": "About 4 concise sentences (3-5 acceptable) covering exactly what to try next, why it is promising based on the gathered evidence, and what pitfalls to avoid. Be terse.",
             },
             "ranked_evidence": {
                 "type": "array",
-                "description": "The most critical evidence supporting the recommendation, from both internal experiments and external papers.",
+                "description": "About 6 items (5-7 max) — the most decisive evidence supporting the recommendation, from both internal experiments and external papers, most decisive first.",
                 "items": {
                     "type": "object",
                     "properties": {
@@ -128,7 +128,7 @@ SUBMIT_RECOMMENDATION = {
             },
             "claims": {
                 "type": "array",
-                "description": "Specific factual claims from the summary/spec, each backed by a citation.",
+                "description": "About 6 factual claims (ideally one per ranked_evidence item) from the summary/spec, each backed by a citation_ref pointing at a ref_id in ranked_evidence.",
                 "items": {
                     "type": "object",
                     "properties": {
