@@ -2,7 +2,7 @@ from optima import config
 from optima.ingest import csv_loader
 from optima.tools.internal_store import InternalStore
 
-from _fakes import factory, response, tool_use
+from _fakes import factory, response, text_block, tool_use
 
 _MESSY_CSV = (
     "Exp ID,what we tried,Task,Model used,$ spent,When,Notes\n"
@@ -42,3 +42,22 @@ async def test_ingest_csv_with_mocked_haiku(tmp_path, monkeypatch):
     assert exp is not None
     assert exp.status == "success"
     assert exp.compute_cost.dollars == 96
+
+
+def _handler_no_terminal(kwargs):
+    # Model fails to emit record_experiment (returns free-form text instead).
+    return response([text_block("could not parse this row")], stop="end_turn")
+
+
+async def test_ingest_handles_unparseable_row(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(csv_loader, "AsyncAnthropic", factory(_handler_no_terminal))
+
+    csv_path = tmp_path / "in.csv"
+    csv_path.write_text(_MESSY_CSV)
+
+    result = await csv_loader.ingest_csv(csv_path, store_dir=tmp_path)
+    assert result.rows == 1
+    assert result.parsed == 0
+    assert result.failures == ["row 1"]
+    assert (result.added, result.updated) == (0, 0)

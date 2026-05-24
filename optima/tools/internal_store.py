@@ -8,6 +8,7 @@ seed stays pristine and ingestion is reproducible. Both are merged on load.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from ..schema import Experiment, InternalDoc
@@ -80,7 +81,7 @@ class InternalStore:
             metric = _headline_metric(e)
             rel = ",".join(e.related_experiment_ids) or "-"
             lines.append(
-                f"- {e.experiment_id} [{e.status}] task={e.task} | {e.hypothesis[:90]} "
+                f"- {e.experiment_id} [{e.status}] task={e.task} | {_clip(e.hypothesis, 90)} "
                 f"| method={e.method or '-'} | metric={metric} | "
                 f"cost=${_dollars(e)} | parent={e.parent_experiment_id or '-'} | related={rel} "
                 f"| tags={','.join(e.tags)}"
@@ -106,7 +107,10 @@ class InternalStore:
                 added += 1
             existing[exp.experiment_id] = exp.model_dump(mode="json")
             self.experiments[exp.experiment_id] = exp
-        path.write_text(json.dumps(list(existing.values()), indent=2) + "\n")
+        # Atomic write: a crash mid-write can't leave a truncated ingested.json.
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(list(existing.values()), indent=2) + "\n")
+        os.replace(tmp, path)
         return added, updated
 
 
@@ -127,6 +131,10 @@ def _searchable_text(e: Experiment) -> str:
         ]
         if x
     )
+
+
+def _clip(s: str, n: int) -> str:
+    return s if len(s) <= n else s[:n].rstrip() + "…"
 
 
 def _headline_metric(e: Experiment) -> str:

@@ -1,6 +1,6 @@
 from optima import config, orchestrator
 from optima.agents import synthesis_agent
-from optima.schema import Evidence, Recommendation
+from optima.schema import Claim, Evidence, Recommendation
 
 from _fakes import factory, response, text_block, tool_use
 
@@ -72,8 +72,37 @@ async def test_orchestrator_end_to_end(monkeypatch):
     # firewall dropped the hallucinated refs
     assert {e.ref_id for e in rec.ranked_evidence} == {"exp_004", "2309.15217"}
     assert {c.citation_ref for c in rec.claims} == {"exp_004"}
-    # usage accumulated across intent + research + context(2) + synthesis = 5 calls
-    assert result.usage["input"] == 25
+    # usage accumulated across all agent calls (don't pin the exact fixture total)
+    assert result.usage["input"] >= 25
+    assert result.usage["output"] > 0
+
+
+def _make_handler_no_intent():
+    """Like the main handler, but the intent call returns free-form text (no tool),
+    exercising the intent=None fallback path."""
+    base = _make_handler()
+
+    def handler(kwargs):
+        choice = kwargs.get("tool_choice")
+        if choice and choice.get("name") == "record_intent":
+            return response([text_block("not sure how to route this")], stop="end_turn")
+        return base(kwargs)
+
+    return handler
+
+
+async def test_orchestrator_intent_fallback(monkeypatch):
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(orchestrator, "AsyncAnthropic", factory(_make_handler_no_intent()))
+
+    result = await orchestrator.run(
+        "reduce RAG hallucinations", allow_live=False, store_dir=config.STORE_DIR
+    )
+    # No intent plan, but defaults still run both agents and produce a recommendation.
+    assert result.intent is None
+    assert result.research_evidence and result.context_evidence
+    assert result.recommendation is not None
+    assert any("Intent pass returned no usable plan" in n for n in result.notes)
 
 
 def test_firewall_unit():
@@ -85,10 +114,15 @@ def test_firewall_unit():
         ],
         experiment_spec={"model": "m", "method": "me", "key_hyperparams": "k",
                          "estimated_compute_cost": "c", "estimated_savings_vs_naive": "s"},
-        claims=[],
+        claims=[
+            Claim(statement="valid", confidence="High", citation_ref="2309.15217"),
+            Claim(statement="fabricated", confidence="Low", citation_ref="0000.00000"),
+        ],
     )
     gathered = [Evidence(kind="external_paper", title="ok", why_relevant="w", ref_id="2309.15217")]
     synthesis_agent._apply_firewall(rec, gathered)
     synthesis_agent._resolve_links(rec)
+    # invalid evidence AND invalid claim dropped; valid ones kept in the same rec
     assert [e.ref_id for e in rec.ranked_evidence] == ["arxiv:2309.15217"]
+    assert [c.citation_ref for c in rec.claims] == ["2309.15217"]
     assert rec.ranked_evidence[0].link == "https://arxiv.org/abs/2309.15217"

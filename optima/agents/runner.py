@@ -9,6 +9,7 @@ tool whose parsed input is returned.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 
 from anthropic import AsyncAnthropic
@@ -56,7 +57,7 @@ async def run_agent(
     for i in range(max_iters):
         result.iterations = i + 1
         kwargs = dict(model=model, max_tokens=max_tokens, system=system, tools=tools, messages=messages)
-        if force_terminal and terminal_tool and i == 0:
+        if force_terminal and terminal_tool:
             kwargs["tool_choice"] = {"type": "tool", "name": terminal_tool}
         resp = await client.messages.create(**kwargs)
         _accumulate(result.usage, resp.usage)
@@ -79,7 +80,12 @@ async def run_agent(
         messages.append({"role": "assistant", "content": resp.content})
         tool_results = []
         for b in tool_uses:
-            out = registry.run(b.name, dict(b.input)) if registry else '{"error":"no registry"}'
+            if registry is None:
+                out = '{"error":"no registry"}'
+            else:
+                # registry.run may do blocking HTTP (paper search). Run it off the
+                # event loop so concurrently-gathered agents don't stall each other.
+                out = await asyncio.to_thread(registry.run, b.name, dict(b.input))
             tool_results.append({"type": "tool_result", "tool_use_id": b.id, "content": out})
         messages.append({"role": "user", "content": tool_results})
 

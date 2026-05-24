@@ -23,15 +23,17 @@ console_err = typer.echo
 
 
 class _DefaultGroup(typer.core.TyperGroup):
-    """If the first token isn't a known command, fall through to `ask`."""
+    """Treat a bare `optima "<query>"` as `optima ask "<query>"`.
+
+    Only reroute when the first token isn't a known subcommand, so a genuine usage
+    error from a real subcommand (e.g. `optima ingest` with no path) still surfaces
+    instead of being misread as a query to `ask`.
+    """
 
     def resolve_command(self, ctx, args):
-        try:
-            return super().resolve_command(ctx, args)
-        except click.UsageError:
-            if args and not args[0].startswith("-"):
-                return super().resolve_command(ctx, ["ask", *args])
-            raise
+        if args and not args[0].startswith("-") and args[0] not in self.commands:
+            args = ["ask", *args]
+        return super().resolve_command(ctx, args)
 
 
 app = typer.Typer(

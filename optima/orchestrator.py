@@ -41,6 +41,11 @@ async def run(query: str, *, allow_live: bool = True, store_dir: Path | None = N
         # 1. Cheap intent pass (Haiku).
         intent, intent_res = await _intent(client, query)
         _merge(usage, intent_res.usage)
+        if intent is None:
+            notes.append(
+                "Intent pass returned no usable plan; defaulted to research + context."
+                + (f' Model said: "{intent_res.text[:200]}"' if intent_res.text else "")
+            )
         needs_research = intent.needs_research if intent else True
         needs_context = intent.needs_context if intent else True
         terms = intent.search_terms if intent else []

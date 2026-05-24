@@ -70,11 +70,18 @@ def _build_digest(query: str, research: list[Evidence], context: list[Evidence])
 
 
 def _norm(ref: str | None) -> str:
+    # Strip source prefixes so a model citing "2309.15217" matches a gathered
+    # "arxiv:2309.15217" / "s2:...". Safe because papers.py constructs ids as
+    # "arxiv:<id>", "s2:<id>", or the raw arXiv URL, so the trailing key is unique
+    # per source within a single query's gathered evidence set.
     ref = (ref or "").strip().lower()
     return ref.removeprefix("arxiv:").removeprefix("s2:")
 
 
 def _apply_firewall(rec: Recommendation, evidence: list[Evidence]) -> None:
+    # Only refs actually GATHERED this run are citable. An experiment that merely
+    # exists in the store but wasn't surfaced as evidence is intentionally dropped —
+    # the recommendation must not cite something the agents never actually saw.
     valid = {_norm(e.ref_id) for e in evidence}
     rec.ranked_evidence = [e for e in rec.ranked_evidence if _norm(e.ref_id) in valid]
     rec.claims = [c for c in rec.claims if _norm(c.citation_ref) in valid]

@@ -18,7 +18,7 @@ from .. import config
 from ..schema import Paper
 from .scoring import score
 
-_ARXIV_API = "http://export.arxiv.org/api/query"
+_ARXIV_API = "https://export.arxiv.org/api/query"
 _S2_API = "https://api.semanticscholar.org/graph/v1/paper/search"
 _UA = {"User-Agent": "Optima/0.1 (experiment-intelligence; mailto:team@optima.dev)"}
 _TIMEOUT = 8.0
@@ -80,10 +80,16 @@ def _arxiv(query: str, max_results: int) -> list[Paper]:
     feed = feedparser.parse(r.text)
     papers: list[Paper] = []
     for e in feed.entries:
-        arxiv_id = _arxiv_id(getattr(e, "id", ""))
+        eid = getattr(e, "id", "")
+        arxiv_id = _arxiv_id(eid)
+        # Use the entry URL as a unique fallback id; skip entries with no stable id
+        # rather than collapsing them onto a shared placeholder (breaks dedupe/citation).
+        paper_id = f"arxiv:{arxiv_id}" if arxiv_id else eid
+        if not paper_id:
+            continue
         papers.append(
             Paper(
-                paper_id=f"arxiv:{arxiv_id}" if arxiv_id else getattr(e, "id", "arxiv:?"),
+                paper_id=paper_id,
                 title=re.sub(r"\s+", " ", getattr(e, "title", "")).strip(),
                 authors=[a.name for a in getattr(e, "authors", [])],
                 year=_year(getattr(e, "published", "")),
